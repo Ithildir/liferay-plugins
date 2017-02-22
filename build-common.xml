@@ -550,6 +550,16 @@ Error-Prone was automatically installed. Please rerun your task.
 			/>
 
 			<if>
+				<antelope:endswith string="${plugin.name}" with="-ext" />
+				<then>
+					<echo>hello</echo>
+					<delete includeemptydirs="true">
+						<fileset dir="@{module.dir}/docroot/WEB-INF" includes="ext-*/classes/**,ext-*/ext-*.jar" />
+					</delete>
+				</then>
+			</if>
+
+			<if>
 				<matches pattern=".*-theme" string="@{module.dir}" />
 				<then>
 					<if>
@@ -632,16 +642,24 @@ Error-Prone was automatically installed. Please rerun your task.
 			/>
 
 			<if>
-				<or>
-					<antelope:endswith string="${plugin.name}" with="-hook" />
-					<antelope:endswith string="${plugin.name}" with="-portlet" />
-					<antelope:endswith string="${plugin.name}" with="-web" />
-				</or>
+				<antelope:endswith string="${plugin.name}" with="-ext" />
 				<then>
-					<compile-portlet
+					<compile-ext
 						module.dir="@{module.dir}"
 					/>
 				</then>
+				<elseif>
+					<or>
+						<antelope:endswith string="${plugin.name}" with="-hook" />
+						<antelope:endswith string="${plugin.name}" with="-portlet" />
+						<antelope:endswith string="${plugin.name}" with="-web" />
+					</or>
+					<then>
+						<compile-portlet
+							module.dir="@{module.dir}"
+						/>
+					</then>
+				</elseif>
 				<elseif>
 					<antelope:endswith string="${plugin.name}" with="-layouttpl" />
 					<then>
@@ -688,6 +706,60 @@ Error-Prone was automatically installed. Please rerun your task.
 						</else>
 					</if>
 				</else>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="compile-ext">
+		<attribute name="module.dir" />
+
+		<sequential>
+			<compile-with-global-class-loader
+				module.dir="@{module.dir}"
+				module.name="service"
+			/>
+
+			<compile-with-portal-class-loader
+				module.dir="@{module.dir}"
+				module.class.path="@{module.dir}/docroot/WEB-INF/ext-service/classes"
+				module.name="util-bridges"
+			/>
+
+			<compile-with-portal-class-loader
+				module.dir="@{module.dir}"
+				module.class.path="@{module.dir}/docroot/WEB-INF/ext-service/classes;@{module.dir}/docroot/WEB-INF/ext-util-bridges/classes"
+				module.name="util-java"
+			/>
+
+
+			<compile-with-portal-class-loader
+				module.dir="@{module.dir}"
+				module.class.path="@{module.dir}/docroot/WEB-INF/ext-service/classes;@{module.dir}/docroot/WEB-INF/ext-util-bridges/classes;@{module.dir}/docroot/WEB-INF/ext-util-java/classes"
+				module.name="util-taglib"
+			/>
+
+
+			<compile-with-portal-class-loader
+				module.dir="@{module.dir}"
+				module.class.path="@{module.dir}/docroot/WEB-INF/ext-service/classes;@{module.dir}/docroot/WEB-INF/ext-util-bridges/classes;@{module.dir}/docroot/WEB-INF/ext-util-java/classes;@{module.dir}/docroot/WEB-INF/ext-util-taglib/classes"
+				module.name="impl"
+			/>
+
+			<delete>
+				<fileset dir="@{module.dir}/docroot/WEB-INF/ext-impl/classes" includes="portal-*.properties,system-*.properties" />
+			</delete>
+
+			<if>
+				<available file="@{module.dir}/docroot/WEB-INF/ext-web/docroot/WEB-INF/lib" />
+				<then>
+					<fail>
+						.
+
+						"docroot\WEB-INF\ext-web\docroot\WEB-INF\lib" must not exist. Put JAR files in
+						"docroot\WEB-INF\ext-lib\portal" that need to be accessible to the portal class
+						loader.
+					</fail>
+				</then>
 			</if>
 		</sequential>
 	</macrodef>
@@ -1384,6 +1456,58 @@ Please find a solution that does not require portal-impl.jar.
 		</sequential>
 	</macrodef>
 
+	<macrodef name="compile-with-global-class-loader">
+		<attribute name="module.dir" />
+		<attribute name="module.name" />
+
+		<sequential>
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-lib/global" />
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/classes" />
+
+			<if>
+				<available file="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/src" />
+				<then>
+					<path id="plugin-lib.classpath">
+						<fileset dir="@{module.dir}/docroot/WEB-INF/ext-lib/global" includes="*.jar" />
+						<pathelement location="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/classes" />
+					</path>
+
+					<compile-java
+						javac.classpathref="plugin.classpath"
+						javac.destdir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/classes"
+						javac.srcdir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/src"
+					/>
+				</then>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="compile-with-portal-class-loader">
+		<attribute name="module.dir" />
+		<attribute name="module.name" />
+		<attribute name="module.class.path" />
+
+		<sequential>
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-lib/global" />
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-lib/portal" />
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/classes" />
+			<mkdir dir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/src" />
+
+			<path id="plugin-lib.classpath">
+				<fileset dir="@{module.dir}/docroot/WEB-INF/ext-lib/global" includes="*.jar" />
+				<fileset dir="@{module.dir}/docroot/WEB-INF/ext-lib/portal" includes="*.jar" />
+				<pathelement path="@{module.class.path}" />
+				<fileset dir="${app.server.lib.portal.dir}" includes="*.jar" />
+			</path>
+
+			<compile-java
+				javac.classpathref="plugin.classpath"
+				javac.destdir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/classes"
+				javac.srcdir="@{module.dir}/docroot/WEB-INF/ext-@{module.name}/src"
+			/>
+		</sequential>
+	</macrodef>
+
 	<macrodef name="deploy">
 		<attribute name="module.dir" />
 
@@ -1394,6 +1518,7 @@ Please find a solution that does not require portal-impl.jar.
 
 			<if>
 				<or>
+					<antelope:endswith string="${plugin.name}" with="-ext" />
 					<antelope:endswith string="${plugin.name}" with="-hook" />
 					<antelope:endswith string="${plugin.name}" with="-layouttpl" />
 					<antelope:endswith string="${plugin.name}" with="-portlet" />
@@ -2400,16 +2525,29 @@ for (String path : paths) {
 			/>
 
 			<if>
-				<or>
-					<antelope:endswith string="${plugin.name}" with="-hook" />
-					<antelope:endswith string="${plugin.name}" with="-layouttpl" />
-					<antelope:endswith string="${plugin.name}" with="-web" />
-				</or>
+				<antelope:endswith string="${plugin.name}" with="-ext" />
 				<then>
+					<loop-macrodef-or-target
+							module.dirs="@{module.dir}"
+							target.name="compile-ext"
+					/>
+
 					<war-web
-						module.dir="@{module.dir}"
+							module.dir="@{module.dir}"
 					/>
 				</then>
+				<elseif>
+					<or>
+						<antelope:endswith string="${plugin.name}" with="-hook" />
+						<antelope:endswith string="${plugin.name}" with="-layouttpl" />
+						<antelope:endswith string="${plugin.name}" with="-web" />
+					</or>
+					<then>
+						<war-web
+							module.dir="@{module.dir}"
+						/>
+					</then>
+				</elseif>
 				<elseif>
 					<antelope:endswith string="${plugin.name}" with="-portlet" />
 					<then>
